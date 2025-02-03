@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright 2023-present the HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -104,7 +103,7 @@ class PromptEncoder(torch.nn.Module):
                 encoder_num_layers_default = PromptEncoderConfig.encoder_num_layers
                 if config.encoder_num_layers != encoder_num_layers_default:
                     warnings.warn(
-                        f"for {self.encoder_type}, the argument `encoder_num_layers` is ignored. "
+                        f"for {self.encoder_type.value}, the argument `encoder_num_layers` is ignored. "
                         f"Exactly {encoder_num_layers_default} MLP layers are used."
                     )
                 layers = [

@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright 2023-present the HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,6 +32,7 @@ class AdaptionPromptConfig(PeftConfig):
     adapter_layers: int = field(default=None, metadata={"help": "Number of adapter layers (from the top)"})
 
     def __post_init__(self):
+        super().__post_init__()
         self.peft_type = PeftType.ADAPTION_PROMPT
 
     @property
@@ -49,6 +49,13 @@ ModelTypeConfig = namedtuple(
 # Mapping of transformers model types to their specific configuration.
 TRANSFORMERS_MODEL_CONFIG = {
     "llama": ModelTypeConfig(
+        compute_query_states=llama_compute_query_states,
+        target_modules="self_attn",
+        k_proj_layer="k_proj",
+        v_proj_layer="v_proj",
+        o_proj_layer="o_proj",
+    ),
+    "mistral": ModelTypeConfig(  # same as llama,
         compute_query_states=llama_compute_query_states,
         target_modules="self_attn",
         k_proj_layer="k_proj",

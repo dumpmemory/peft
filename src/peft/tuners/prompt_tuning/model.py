@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright 2023-present the HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +15,8 @@
 import math
 
 import torch
+
+from peft.utils.integrations import gather_params_ctx
 
 from .config import PromptTuningInit
 
@@ -63,10 +64,11 @@ class PromptEmbedding(torch.nn.Module):
 
         total_virtual_tokens = config.num_virtual_tokens * config.num_transformer_submodules
         self.embedding = torch.nn.Embedding(total_virtual_tokens, config.token_dim)
-        if config.prompt_tuning_init == PromptTuningInit.TEXT:
+        if config.prompt_tuning_init == PromptTuningInit.TEXT and not config.inference_mode:
             from transformers import AutoTokenizer
 
-            tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name_or_path)
+            tokenizer_kwargs = config.tokenizer_kwargs or {}
+            tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name_or_path, **tokenizer_kwargs)
             init_text = config.prompt_tuning_init_text
             init_token_ids = tokenizer(init_text)["input_ids"]
             # Trim or iterate until num_text_tokens matches total_virtual_tokens
@@ -77,8 +79,9 @@ class PromptEmbedding(torch.nn.Module):
                 num_reps = math.ceil(total_virtual_tokens / num_text_tokens)
                 init_token_ids = init_token_ids * num_reps
             init_token_ids = init_token_ids[:total_virtual_tokens]
-
-            word_embedding_weights = word_embeddings(torch.LongTensor(init_token_ids)).detach().clone()
+            init_token_ids = torch.LongTensor(init_token_ids).to(word_embeddings.weight.device)
+            with gather_params_ctx(word_embeddings.parameters()):
+                word_embedding_weights = word_embeddings(init_token_ids).detach().clone()
             word_embedding_weights = word_embedding_weights.to(torch.float32)
             self.embedding.weight = torch.nn.Parameter(word_embedding_weights)
 

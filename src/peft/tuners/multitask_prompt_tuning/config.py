@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright 2023-present the HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,4 +58,5 @@ class MultitaskPromptTuningConfig(PromptTuningConfig):
     num_tasks: Optional[int] = field(default=1, metadata={"help": "number of tasks"})
 
     def __post_init__(self):
+        super().__post_init__()
         self.peft_type = PeftType.MULTITASK_PROMPT_TUNING

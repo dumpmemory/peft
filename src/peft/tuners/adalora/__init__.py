@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright 2023-present the HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +13,7 @@
 # limitations under the License.
 
 from peft.import_utils import is_bnb_4bit_available, is_bnb_available
+from peft.utils import register_peft_method
 
 from .config import AdaLoraConfig
 from .gptq import SVDQuantLinear
@@ -21,15 +21,23 @@ from .layer import AdaLoraLayer, RankAllocator, SVDLinear
 from .model import AdaLoraModel
 
 
-__all__ = ["AdaLoraConfig", "AdaLoraLayer", "AdaLoraModel", "SVDLinear", "RankAllocator", "SVDQuantLinear"]
+__all__ = ["AdaLoraConfig", "AdaLoraLayer", "AdaLoraModel", "RankAllocator", "SVDLinear", "SVDQuantLinear"]
 
 
-if is_bnb_available():
-    from .bnb import SVDLinear8bitLt
+register_peft_method(
+    name="adalora", config_cls=AdaLoraConfig, model_cls=AdaLoraModel, prefix="lora_", is_mixed_compatible=True
+)
 
-    __all__ += ["SVDLinear8bitLt"]
 
-if is_bnb_4bit_available():
-    from .bnb import SVDLinear4bit
+def __getattr__(name):
+    if (name == "SVDLinear8bitLt") and is_bnb_available():
+        from .bnb import SVDLinear8bitLt
 
-    __all__ += ["SVDLinear4bit"]
+        return SVDLinear8bitLt
+
+    if (name == "SVDLinear4bit") and is_bnb_4bit_available():
+        from .bnb import SVDLinear4bit
+
+        return SVDLinear4bit
+
+    raise AttributeError(f"module {__name__} has no attribute {name}")

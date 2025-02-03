@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright 2023-present the HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,6 +36,9 @@ class PromptTuningConfig(PromptLearningConfig):
             The text to initialize the prompt embedding. Only used if `prompt_tuning_init` is `TEXT`.
         tokenizer_name_or_path (`str`, *optional*):
             The name or path of the tokenizer. Only used if `prompt_tuning_init` is `TEXT`.
+        tokenizer_kwargs (`dict`, *optional*):
+            The keyword arguments to pass to `AutoTokenizer.from_pretrained`. Only used if `prompt_tuning_init` is
+            `TEXT`.
     """
 
     prompt_tuning_init: Union[PromptTuningInit, str] = field(
@@ -56,5 +58,30 @@ class PromptTuningConfig(PromptLearningConfig):
         },
     )
 
+    tokenizer_kwargs: Optional[dict] = field(
+        default=None,
+        metadata={
+            "help": (
+                "The keyword arguments to pass to `AutoTokenizer.from_pretrained`. Only used if prompt_tuning_init is "
+                "`TEXT`"
+            ),
+        },
+    )
+
     def __post_init__(self):
+        super().__post_init__()
         self.peft_type = PeftType.PROMPT_TUNING
+        if (self.prompt_tuning_init == PromptTuningInit.TEXT) and not self.tokenizer_name_or_path:
+            raise ValueError(
+                f"When prompt_tuning_init='{PromptTuningInit.TEXT.value}', "
+                f"tokenizer_name_or_path can't be {self.tokenizer_name_or_path}."
+            )
+        if (self.prompt_tuning_init == PromptTuningInit.TEXT) and self.prompt_tuning_init_text is None:
+            raise ValueError(
+                f"When prompt_tuning_init='{PromptTuningInit.TEXT.value}', "
+                f"prompt_tuning_init_text can't be {self.prompt_tuning_init_text}."
+            )
+        if self.tokenizer_kwargs and (self.prompt_tuning_init != PromptTuningInit.TEXT):
+            raise ValueError(
+                f"tokenizer_kwargs only valid when using prompt_tuning_init='{PromptTuningInit.TEXT.value}'."
+            )

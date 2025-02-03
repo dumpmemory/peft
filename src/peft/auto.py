@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright 2023-present the HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +15,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 from typing import Optional
 
 from transformers import (
@@ -25,10 +25,10 @@ from transformers import (
     AutoModelForSeq2SeqLM,
     AutoModelForSequenceClassification,
     AutoModelForTokenClassification,
+    AutoTokenizer,
 )
 
 from .config import PeftConfig
-from .mapping import MODEL_TYPE_TO_PEFT_MODEL_MAPPING
 from .peft_model import (
     PeftModel,
     PeftModelForCausalLM,
@@ -38,6 +38,18 @@ from .peft_model import (
     PeftModelForSequenceClassification,
     PeftModelForTokenClassification,
 )
+from .utils.constants import TOKENIZER_CONFIG_NAME
+from .utils.other import check_file_exists_on_hf_hub
+
+
+MODEL_TYPE_TO_PEFT_MODEL_MAPPING: dict[str, type[PeftModel]] = {
+    "SEQ_CLS": PeftModelForSequenceClassification,
+    "SEQ_2_SEQ_LM": PeftModelForSeq2SeqLM,
+    "CAUSAL_LM": PeftModelForCausalLM,
+    "TOKEN_CLS": PeftModelForTokenClassification,
+    "QUESTION_ANS": PeftModelForQuestionAnswering,
+    "FEATURE_EXTRACTION": PeftModelForFeatureExtraction,
+}
 
 
 class _BaseAutoPeftModel:
@@ -46,7 +58,7 @@ class _BaseAutoPeftModel:
 
     def __init__(self, *args, **kwargs):
         # For consistency with transformers: https://github.com/huggingface/transformers/blob/91d7df58b6537d385e90578dac40204cb550f706/src/transformers/models/auto/auto_factory.py#L400
-        raise EnvironmentError(
+        raise EnvironmentError(  # noqa: UP024
             f"{self.__class__.__name__} is designed to be instantiated "
             f"using the `{self.__class__.__name__}.from_pretrained(pretrained_model_name_or_path)` or "
             f"`{self.__class__.__name__}.from_config(config)` methods."
@@ -59,6 +71,7 @@ class _BaseAutoPeftModel:
         adapter_name: str = "default",
         is_trainable: bool = False,
         config: Optional[PeftConfig] = None,
+        revision: Optional[str] = None,
         **kwargs,
     ):
         r"""
@@ -66,8 +79,9 @@ class _BaseAutoPeftModel:
         are passed along to `PeftConfig` that automatically takes care of filtering the kwargs of the Hub methods and
         the config object init.
         """
-        peft_config = PeftConfig.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        peft_config = PeftConfig.from_pretrained(pretrained_model_name_or_path, revision=revision, **kwargs)
         base_model_path = peft_config.base_model_name_or_path
+        base_model_revision = peft_config.revision
 
         task_type = getattr(peft_config, "task_type", None)
 
@@ -83,7 +97,7 @@ class _BaseAutoPeftModel:
             expected_target_class = MODEL_TYPE_TO_PEFT_MODEL_MAPPING[task_type]
             if cls._target_peft_class.__name__ != expected_target_class.__name__:
                 raise ValueError(
-                    f"Expected target PEFT class: {expected_target_class.__name__}, but you have asked for: {cls._target_peft_class.__name__ }"
+                    f"Expected target PEFT class: {expected_target_class.__name__}, but you have asked for: {cls._target_peft_class.__name__}"
                     " make sure that you are loading the correct model for your task type."
                 )
         elif task_type is None and getattr(peft_config, "auto_mapping", None) is not None:
@@ -98,7 +112,29 @@ class _BaseAutoPeftModel:
                 "Cannot infer the auto class from the config, please make sure that you are loading the correct model for your task type."
             )
 
-        base_model = target_class.from_pretrained(base_model_path, **kwargs)
+        base_model = target_class.from_pretrained(base_model_path, revision=base_model_revision, **kwargs)
+
+        tokenizer_exists = False
+        if os.path.exists(os.path.join(pretrained_model_name_or_path, TOKENIZER_CONFIG_NAME)):
+            tokenizer_exists = True
+        else:
+            token = kwargs.get("token", None)
+            if token is None:
+                token = kwargs.get("use_auth_token", None)
+
+            tokenizer_exists = check_file_exists_on_hf_hub(
+                repo_id=pretrained_model_name_or_path,
+                filename=TOKENIZER_CONFIG_NAME,
+                revision=revision,
+                repo_type=kwargs.get("repo_type", None),
+                token=token,
+            )
+
+        if tokenizer_exists:
+            tokenizer = AutoTokenizer.from_pretrained(
+                pretrained_model_name_or_path, trust_remote_code=kwargs.get("trust_remote_code", False)
+            )
+            base_model.resize_token_embeddings(len(tokenizer))
 
         return cls._target_peft_class.from_pretrained(
             base_model,
