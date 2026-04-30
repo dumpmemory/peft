@@ -35,6 +35,7 @@ from transformers.pytorch_utils import Conv1D
 from peft import (
     AdaLoraConfig,
     AdamssConfig,
+    BeftConfig,
     BOFTConfig,
     C3AConfig,
     DeloraConfig,
@@ -255,6 +256,24 @@ TEST_CASES = [
         "Conv3d",
         IA3Config,
         {"target_modules": ["conv3d", "lin0"], "feedforward_modules": ["conv3d", "lin0"]},
+    ),
+    ########
+    # BEFT #
+    ########
+    ("Vanilla MLP 1 BEFT", "MLP", BeftConfig, {"target_modules": "lin0"}),
+    ("Vanilla MLP 2 BEFT", "MLP", BeftConfig, {"target_modules": ["lin0"]}),
+    ("Vanilla MLP 3 BEFT", "MLP", BeftConfig, {"target_modules": ["lin1"]}),
+    (
+        "Vanilla MLP 4 BEFT",
+        "MLP",
+        BeftConfig,
+        {"target_modules": ["lin0", "lin1"]},
+    ),
+    (
+        "Vanilla MLP 5 BEFT",
+        "MLP",
+        BeftConfig,
+        {"target_modules": ["lin0"], "modules_to_save": ["lin1"]},
     ),
     ########
     # LoHa #
@@ -1191,6 +1210,32 @@ MULTIPLE_ACTIVE_ADAPTERS_TEST_CASES = [
             "target_modules": ["lin1"],
             "feedforward_modules": ["lin1"],
             "init_ia3_weights": False,
+        },
+    ),
+    (
+        "BEFT Same",
+        "beft",
+        BeftConfig,
+        {
+            "target_modules": ["lin0"],
+            "init_weights": False,
+        },
+        {
+            "target_modules": ["lin0"],
+            "init_weights": False,
+        },
+    ),
+    (
+        "BEFT Different",
+        "beft",
+        BeftConfig,
+        {
+            "target_modules": ["lin0"],
+            "init_weights": False,
+        },
+        {
+            "target_modules": ["lin1"],
+            "init_weights": False,
         },
     ),
     (
@@ -3254,7 +3299,7 @@ class TestPeftCustomModel(PeftCommonTester):
         assert "other" in model.base_model.classifier.modules_to_save
 
     @pytest.mark.parametrize(
-        "config_cls", [IA3Config, LoHaConfig, LoKrConfig, LoraConfig, HRAConfig, ShiraConfig, MissConfig]
+        "config_cls", [IA3Config, BeftConfig, LoHaConfig, LoKrConfig, LoraConfig, HRAConfig, ShiraConfig, MissConfig]
     )
     def test_multiple_adapters_mixed_modules_to_save(self, config_cls):
         # See issue 1574
@@ -3285,7 +3330,9 @@ class TestPeftCustomModel(PeftCommonTester):
         model.set_adapter("other")
         model(**inputs)
 
-    @pytest.mark.parametrize("config_cls", [IA3Config, LoHaConfig, LoKrConfig, LoraConfig, HRAConfig, ShiraConfig])
+    @pytest.mark.parametrize(
+        "config_cls", [IA3Config, BeftConfig, LoHaConfig, LoKrConfig, LoraConfig, HRAConfig, ShiraConfig]
+    )
     def test_multiple_adapters_mixed_modules_to_save_order_switched(self, config_cls):
         # See issue 1574
         # Same test as test_multiple_adapters_mixed_modules_to_save, but this time the 2nd adapter has modules_to_save.
@@ -3374,7 +3421,9 @@ class TestPeftCustomModel(PeftCommonTester):
         with pytest.raises(ValueError, match=msg):
             model.add_weighted_adapter(["default", "other"], weights=[1.0, 1.0], adapter_name="merged")
 
-    @pytest.mark.parametrize("config_cls", [IA3Config, LoHaConfig, LoKrConfig, LoraConfig, HRAConfig, MissConfig])
+    @pytest.mark.parametrize(
+        "config_cls", [IA3Config, BeftConfig, LoHaConfig, LoKrConfig, LoraConfig, HRAConfig, MissConfig]
+    )
     def test_add_weighted_adapter_cat_with_rank_pattern(self, config_cls):
         # Fixes a bug described in #2512, which resulted from the rank_pattern not being taken into account
         config0 = LoraConfig(target_modules=["lin0", "lin1"], r=8, rank_pattern={"lin0": 2})
@@ -3624,6 +3673,7 @@ class TestPeftCustomModel(PeftCommonTester):
             LoHaConfig(target_modules=["lin0"], init_weights=False),
             AdaLoraConfig(target_modules=["lin0"], init_lora_weights=False, total_step=1),
             IA3Config(target_modules=["lin0"], feedforward_modules=["lin0"], init_ia3_weights=False),
+            BeftConfig(target_modules=["lin0"], init_weights=False),
             OFTConfig(target_modules=["lin0"], init_weights=False, r=2, oft_block_size=0),
             BOFTConfig(target_modules=["lin0"], init_weights=False, boft_block_size=2),
             HRAConfig(target_modules=["lin0"], init_weights=False),
