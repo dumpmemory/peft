@@ -29,7 +29,11 @@ from transformers.pytorch_utils import Conv1D
 
 from peft.import_utils import is_transformers_ge_v5_4_0
 from peft.tuners._buffer_dict import BufferDict
-from peft.tuners.tuners_utils import BaseTunerLayer, _get_in_out_features, check_adapters_to_merge
+from peft.tuners.tuners_utils import (
+    BaseTunerLayer,
+    _get_in_out_features,
+    check_adapters_to_merge,
+)
 from peft.utils import ALLOWED_COMPUTE_DTYPES, UPCAST_DTYPES
 from peft.utils.integrations import (
     dequantize_module_weight,
@@ -793,6 +797,11 @@ class Linear(nn.Module, LoraLayer):
         self.is_target_conv_1d_layer = is_target_conv_1d_layer
 
     def resolve_lora_variant(self, config: LoraConfig, **kwargs) -> Optional[LoraVariant]:
+        if config.velora_config is not None:
+            from .variants import VeloraLinearVariant
+
+            return VeloraLinearVariant()
+
         if config.arrow_config is not None:
             from .variants import ArrowLinearVariant
 
@@ -1050,6 +1059,8 @@ class Embedding(nn.Module, LoraLayer):
         )
 
     def resolve_lora_variant(self, *, config: LoraConfig, **kwargs) -> Optional[LoraVariant]:
+        if config.velora_config is not None:
+            raise ValueError("VeLoRA does not support adapting embedding layers.")
         if not config.use_dora:
             return None
 
@@ -1363,6 +1374,8 @@ class _ConvNd(nn.Module, LoraLayer):
         LoraLayer.__init__(self, base_layer)
         if kwargs.get("use_alora", False):
             raise ValueError("aLoRA does not support adapting conv layers.")
+        if config.velora_config is not None:
+            raise ValueError("VeLoRA does not support adapting conv layers.")
         if base_layer.groups > 1:
             warnings.warn("LoRA adapter added to ConvNd layer with groups > 1. Merging is not supported.")
 
@@ -1655,6 +1668,8 @@ class Conv2d(_ConvNd):
         self.conv_fn = F.conv2d
 
     def resolve_lora_variant(self, *, config: LoraConfig, **kwargs) -> Optional[LoraVariant]:
+        if config.velora_config is not None:
+            raise ValueError("VeLoRA does not support adapting conv layers.")
         if not config.use_dora:
             return None
 
@@ -1672,6 +1687,8 @@ class Conv1d(_ConvNd):
         self.conv_fn = F.conv1d
 
     def resolve_lora_variant(self, *, config: LoraConfig, **kwargs) -> Optional[LoraVariant]:
+        if config.velora_config is not None:
+            raise ValueError("VeLoRA does not support adapting conv layers.")
         if not config.use_dora:
             return None
 
@@ -1689,6 +1706,8 @@ class Conv3d(_ConvNd):
         self.conv_fn = F.conv3d
 
     def resolve_lora_variant(self, *, config: LoraConfig, **kwargs) -> Optional[LoraVariant]:
+        if config.velora_config is not None:
+            raise ValueError("VeLoRA does not support adapting conv layers.")
         if not config.use_dora:
             return None
 
@@ -1732,6 +1751,8 @@ class MultiheadAttention(nn.Module, LoraLayer):
         if config.use_dora:
             # TODO: probably not so hard to implement
             raise ValueError(f"{self.__class__.__name__} does not support DoRA (yet), please set use_dora to False")
+        if config.velora_config is not None:
+            raise ValueError(f"{self.__class__.__name__} does not support VeLoRA, please set `velora_config=None`.")
         if kwargs.get("use_alora", False):
             raise ValueError(f"{self.__class__.__name__} does not support aLoRA (yet), please set use_alora to False")
         super().__init__()
@@ -2146,6 +2167,8 @@ class ParamWrapper(nn.Module, LoraLayer):
             raise ValueError(f"lora.{self.__class__.__name__} does not work with lora_bias=True.")
         if config.use_dora:
             raise ValueError(f"lora.{self.__class__.__name__} does not work with use_dora=True.")
+        if config.velora_config is not None:
+            raise ValueError(f"lora.{self.__class__.__name__} does not work when `velora_config` is set.")
         if is_target_conv_1d_layer:
             raise ValueError(f"lora.{self.__class__.__name__} does not work with is_target_conv_1d_layer=True.")
 
