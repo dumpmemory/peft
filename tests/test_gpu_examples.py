@@ -6573,7 +6573,7 @@ def _test_save_unsharded_weights(rank, world_size, port, tmp_dir_reference, tmp_
     Flow:
       1. Rank 0: create a plain (non-TP) PEFT model, save it as the reference.
       2. All ranks: load the TP base model, load the reference PEFT weights (shards on load), then save again.
-      3. Rank 0: compare the re-saved state dict against the original reference — they must match exactly.
+      3. Rank 0: compare the re-saved state dict against the original reference, they must match exactly.
     """
     if rank == 0:
         plain_model = AutoModelForCausalLM.from_pretrained(TINY_MODEL_ID)
@@ -6681,7 +6681,7 @@ def _test_load_adapter_save(rank, world_size, port, tmp_dir_reference, tmp_dir_t
     Flow:
       1. Rank 0: create a plain (non-TP) model, load adapter from config, save state dict as reference.
       2. All ranks: load TP base model, load adapter from config, save state dict via get_peft_model_state_dict.
-      3. Rank 0: compare re-saved state dict against the reference — keys and values must match.
+      3. Rank 0: compare re-saved state dict against the reference, keys and values must match.
     """
     if rank == 0:
         plain_model = AutoModelForCausalLM.from_pretrained(TINY_MODEL_ID)
@@ -6767,3 +6767,37 @@ class TestLoraTensorParallel:
         tmp_dir_reference = tmp_path / "reference"
         tmp_dir_tp = tmp_path / "tp"
         self._spawn(_test_load_adapter_save, tmp_dir_reference, tmp_dir_tp, port_offset=6)
+
+
+@pytest.mark.single_gpu_tests
+@require_bitsandbytes
+def test_kappatune_with_4bit_model():
+    """Test that KappaTune works with 4-bit quantized models on GPU."""
+    import torch
+    from transformers import AutoModelForCausalLM, BitsAndBytesConfig
+
+    from peft.helpers import find_kappa_target_modules
+
+    # Use a very small model for faster testing
+    quantization_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+    )
+
+    model = AutoModelForCausalLM.from_pretrained(
+        "hf-internal-testing/tiny-random-LlamaForCausalLM",
+        quantization_config=quantization_config,
+        device_map="cuda",
+        torch_dtype=torch.float16,
+    )
+
+    # Run KappaTune
+    targets = find_kappa_target_modules(model, top_p=0.3)
+
+    # Basic assertions
+    assert isinstance(targets, dict)
+    assert "target_modules" in targets
+    assert isinstance(targets["target_modules"], list)
+    assert len(targets["target_modules"]) > 0, "Should return at least some target modules"
